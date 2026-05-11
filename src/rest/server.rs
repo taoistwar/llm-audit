@@ -2,6 +2,7 @@ use crate::AppState;
 use crate::get_bind_addr;
 use crate::get_proxy_handler;
 use crate::init_tracing;
+use crate::health_handler;
 use crate::post_proxy_handler;
 use crate::tls_pem_paths;
 use axum::{Router, routing::get};
@@ -17,6 +18,7 @@ pub async fn start_server() {
 
     let state = AppState::factory();
     let app = Router::new()
+        .route("/health", get(health_handler))
         .route("/{*path}", get(get_proxy_handler).post(post_proxy_handler))
         .with_state(state);
 

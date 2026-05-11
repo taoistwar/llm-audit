@@ -1,8 +1,10 @@
 pub mod app_state;
+pub mod health;
 pub mod post_proxy;
 pub mod get_proxy;
 pub mod server;
 pub use app_state::*;
+pub use health::*;
 pub use post_proxy::*;
 pub use server::*;
 pub use get_proxy::*;
