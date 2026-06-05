@@ -1,25 +1,23 @@
 use crate::AppState;
 use crate::get_bind_addr;
-use crate::get_proxy_handler;
 use crate::init_tracing;
 use crate::health_handler;
 use crate::post_proxy_handler;
 use crate::tls_pem_paths;
-use axum::{Router, routing::get};
+use axum::{Router, routing::get, routing::post};
 use axum_server::tls_rustls::RustlsConfig;
 
 use tokio::net::TcpListener;
 use tracing::info;
 
 pub async fn start_server() {
-    dotenvy::dotenv().ok();
 
     let _log_guard = init_tracing();
 
     let state = AppState::factory();
     let app = Router::new()
         .route("/health", get(health_handler))
-        .route("/{*path}", get(get_proxy_handler).post(post_proxy_handler))
+        .route("/{*path}", post(post_proxy_handler))
         .with_state(state);
 
     let addr = get_bind_addr();
