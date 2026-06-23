@@ -63,6 +63,9 @@ pub async fn post_proxy_handler(
     }
     req_builder = req_builder.header(LOOP_HEADER, "1");
 
+    let started_at = chrono::Utc::now();
+    let timer = std::time::Instant::now();
+
     let resp = req_builder
         .body(body_bytes.clone())
         .send()
@@ -99,12 +102,14 @@ pub async fn post_proxy_handler(
         }
 
         if let Some(cfg) = state.langfuse() {
+            let started_ts = started_at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
             let batch = build_langfuse_start_batch(
                 &trace_id,
                 &gen_id,
                 &path,
                 input_val.clone(),
                 &model,
+                &started_ts,
             );
             let http = state.http().clone();
             let cfg = cfg.clone();
@@ -135,6 +140,7 @@ pub async fn post_proxy_handler(
         let gid = gen_id.clone();
         let tid_stream = trace_id.clone();
         let audit_enabled = state.audit_log_enabled();
+        let timer = timer;
         let (tx, rx) = mpsc::channel::<Result<Bytes, std::io::Error>>(32);
         tokio::spawn(async move {
             let mut s = resp.bytes_stream();
@@ -155,9 +161,13 @@ pub async fn post_proxy_handler(
             }
             drop(tx);
 
+            let elapsed = timer.elapsed();
+            let elapsed_ms = elapsed.as_millis() as u64;
+            let completed_at = chrono::Utc::now();
+
             let out = parse_llm_output(&buf);
             if audit_enabled {
-                log_audit_response(&tid_stream, upstream_status, &out, audit_max);
+                log_audit_response(&tid_stream, upstream_status, &out, audit_max, elapsed_ms);
             }
             match lf {
                 Some(cfg) => {
@@ -165,21 +175,22 @@ pub async fn post_proxy_handler(
                     let start_ok = start_done_rx.await.unwrap_or(false);
                     if !start_ok {
                         if !audit_enabled {
-                            log_audit_response(&tid_stream, upstream_status, &out, audit_max);
+                            log_audit_response(&tid_stream, upstream_status, &out, audit_max, elapsed_ms);
                         }
                         return;
                     }
-                    let batch = build_generation_update_batch(&gid, out.clone());
+                    let completed_ts = completed_at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                    let batch = build_generation_update_batch(&gid, out.clone(), &completed_ts, elapsed_ms);
                     if let Err(e) = langfuse_post_batch(&http, &cfg, batch).await {
                         warn!(target: AUDIT_TARGET, trace_id = %tid_stream, "langfuse generation-update: {e}");
                         if !audit_enabled {
-                            log_audit_response(&tid_stream, upstream_status, &out, audit_max);
+                            log_audit_response(&tid_stream, upstream_status, &out, audit_max, elapsed_ms);
                         }
                     }
                 }
                 None => {
                     if !audit_enabled {
-                        log_audit_response(&tid_stream, upstream_status, &out, audit_max);
+                        log_audit_response(&tid_stream, upstream_status, &out, audit_max, elapsed_ms);
                     }
                 }
             }
@@ -194,14 +205,20 @@ pub async fn post_proxy_handler(
     // 一次性塞进同一个 batch 提交，Langfuse 按 batch 内顺序处理，杜绝事件错序。
     let full = resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
 
+    let elapsed = timer.elapsed();
+    let elapsed_ms = elapsed.as_millis() as u64;
+    let completed_at = chrono::Utc::now();
+
     let out = parse_llm_output(&full);
 
     if state.audit_log_enabled() {
-        log_audit_response(&trace_id, upstream_status, &out, audit_max);
+        log_audit_response(&trace_id, upstream_status, &out, audit_max, elapsed_ms);
     }
 
     match state.langfuse() {
         Some(cfg) => {
+            let started_ts = started_at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            let completed_ts = completed_at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
             let batch = build_langfuse_full_batch(
                 &trace_id,
                 &gen_id,
@@ -209,6 +226,9 @@ pub async fn post_proxy_handler(
                 input_val.clone(),
                 &model,
                 out.clone(),
+                &started_ts,
+                &completed_ts,
+                elapsed_ms,
             );
             let http = state.http().clone();
             let cfg = cfg.clone();
@@ -223,7 +243,7 @@ pub async fn post_proxy_handler(
                     warn!(target: AUDIT_TARGET, trace_id = %tid, "langfuse ingestion: {e}");
                     if !audit_enabled {
                         log_audit_request(&tid, &path_c, &model_c, &input_c, audit_max);
-                        log_audit_response(&tid, upstream_status, &out_c, audit_max);
+                        log_audit_response(&tid, upstream_status, &out_c, audit_max, elapsed_ms);
                     }
                 }
             });
@@ -231,7 +251,7 @@ pub async fn post_proxy_handler(
         None => {
             if !state.audit_log_enabled() {
                 log_audit_request(&trace_id, &path, &model, &input_val, audit_max);
-                log_audit_response(&trace_id, upstream_status, &out, audit_max);
+                log_audit_response(&trace_id, upstream_status, &out, audit_max, elapsed_ms);
             }
         }
     }

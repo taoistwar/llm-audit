@@ -5,6 +5,10 @@ pub fn ingestion_timestamp() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
 
+pub fn ingestion_timestamp_ms() -> i64 {
+    chrono::Utc::now().timestamp_millis()
+}
+
 pub fn json_for_log(v: &serde_json::Value) -> String {
     serde_json::to_string(v).unwrap_or_else(|_| "<non-serializable>".to_string())
 }

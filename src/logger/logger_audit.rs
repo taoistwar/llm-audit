@@ -35,12 +35,14 @@ pub fn log_audit_response(
     upstream_status: u16,
     output: &serde_json::Value,
     max_chars: usize,
+    elapsed_ms: u64,
 ) {
     let output_s: String = truncate_log_string(&json_for_log(output), max_chars);
     info!(
         target: AUDIT_TARGET,
         trace_id = %trace_id,
         upstream_status,
+        elapsed_ms,
         output = %output_s,
         "audit response"
     );

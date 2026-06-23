@@ -51,6 +51,7 @@ pub fn build_trace_create_event(
     trace_id: &str,
     path: &str,
     input: serde_json::Value,
+    started_at: &str,
 ) -> serde_json::Value {
     let ts = ingestion_timestamp();
     serde_json::json!({
@@ -59,7 +60,7 @@ pub fn build_trace_create_event(
         "type": "trace-create",
         "body": {
             "id": trace_id,
-            "timestamp": ts,
+            "timestamp": started_at,
             "name": format!("llm {path}"),
             "metadata": { "path": path, "source": "llm-audit" },
             "input": input,
@@ -73,6 +74,7 @@ pub fn build_generation_create_event(
     trace_id: &str,
     model: &str,
     input: serde_json::Value,
+    started_at: &str,
 ) -> serde_json::Value {
     let ts = ingestion_timestamp();
     serde_json::json!({
@@ -83,7 +85,7 @@ pub fn build_generation_create_event(
             "id": gen_id,
             "traceId": trace_id,
             "name": "llm",
-            "startTime": ts,
+            "startTime": started_at,
             "model": model,
             "input": input,
         }
@@ -94,6 +96,8 @@ pub fn build_generation_create_event(
 pub fn build_generation_update_event(
     gen_id: &str,
     output: serde_json::Value,
+    completed_at: &str,
+    elapsed_ms: u64,
 ) -> serde_json::Value {
     let ts = ingestion_timestamp();
     serde_json::json!({
@@ -102,8 +106,11 @@ pub fn build_generation_update_event(
         "type": "generation-update",
         "body": {
             "id": gen_id,
-            "endTime": ts,
+            "endTime": completed_at,
             "output": output,
+            "metadata": {
+                "latencyMs": elapsed_ms,
+            },
         }
     })
 }
@@ -119,11 +126,14 @@ pub fn build_langfuse_full_batch(
     input: serde_json::Value,
     model: &str,
     output: serde_json::Value,
+    started_at: &str,
+    completed_at: &str,
+    elapsed_ms: u64,
 ) -> Vec<serde_json::Value> {
     vec![
-        build_trace_create_event(trace_id, path, input.clone()),
-        build_generation_create_event(gen_id, trace_id, model, input),
-        build_generation_update_event(gen_id, output),
+        build_trace_create_event(trace_id, path, input.clone(), started_at),
+        build_generation_create_event(gen_id, trace_id, model, input, started_at),
+        build_generation_update_event(gen_id, output, completed_at, elapsed_ms),
     ]
 }
 
@@ -133,18 +143,21 @@ pub fn build_langfuse_start_batch(
     path: &str,
     input: serde_json::Value,
     model: &str,
+    started_at: &str,
 ) -> Vec<serde_json::Value> {
     vec![
-        build_trace_create_event(trace_id, path, input.clone()),
-        build_generation_create_event(gen_id, trace_id, model, input),
+        build_trace_create_event(trace_id, path, input.clone(), started_at),
+        build_generation_create_event(gen_id, trace_id, model, input, started_at),
     ]
 }
 
 pub fn build_generation_update_batch(
     gen_id: &str,
     output: serde_json::Value,
+    completed_at: &str,
+    elapsed_ms: u64,
 ) -> Vec<serde_json::Value> {
-    vec![build_generation_update_event(gen_id, output)]
+    vec![build_generation_update_event(gen_id, output, completed_at, elapsed_ms)]
 }
 
 /// 单个 tool-create 事件
