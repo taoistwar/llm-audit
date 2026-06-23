@@ -47,16 +47,7 @@ Langfuse is enabled only when **both** `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRE
 
 ## Run
 
-```bash
-cargo run
-```
-
-Release build:
-
-```bash
-cargo build --release
-./target/release/llm-audit
-```
+See [docs/deployment.md](docs/deployment.md) for build and deployment instructions.
 
 ## Point clients at the proxy
 

@@ -47,16 +47,7 @@
 
 ## 运行
 
-```bash
-cargo run
-```
-
-发布构建：
-
-```bash
-cargo build --release
-./target/release/llm-audit
-```
+构建与部署说明见 [docs/deployment.md](docs/deployment.md)。
 
 ## 客户端如何对接
 
