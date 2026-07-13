@@ -40,3 +40,10 @@ pub fn env_flag_explicit_false(key: &str) -> bool {
         })
         .unwrap_or(false)
 }
+
+pub fn env_usize(key: &str, default: usize) -> usize {
+    std::env::var(key)
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(default)
+}

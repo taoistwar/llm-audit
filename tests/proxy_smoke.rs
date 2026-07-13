@@ -134,4 +134,3 @@ async fn proxy_smoke_https() {
     let strict = verify_tls_enabled();
     run_one("HTTPS", &https_u, strict).await.unwrap();
 }
-

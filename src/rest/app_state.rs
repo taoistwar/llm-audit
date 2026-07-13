@@ -1,6 +1,12 @@
-use crate::{audit_log_max_chars_from_env, env_flag_explicit_false, env_flag_true};
+use crate::{audit_log_max_chars_from_env, env_flag_explicit_false, env_flag_true, env_usize};
 use reqwest::{Client, redirect};
+use std::future::Future;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 use std::time::Duration;
+use tokio::sync::Notify;
 use tracing::info;
 
 fn http_client_timeout() -> Option<Duration> {
@@ -91,6 +97,15 @@ pub struct AppState {
     audit_log_enabled: bool,
     /// 审计日志中 input/output JSON 的最大 UTF-8 字节数（`usize::MAX` 表示不截断）
     audit_log_max_chars: usize,
+    request_body_max_bytes: usize,
+    response_capture_max_bytes: usize,
+    background_tasks: Arc<BackgroundTasks>,
+}
+
+#[derive(Default)]
+struct BackgroundTasks {
+    pending: AtomicUsize,
+    changed: Notify,
 }
 
 impl AppState {
@@ -104,11 +119,11 @@ impl AppState {
 
         let audit_log_enabled = env_flag_true("AUDIT_LOG_ENABLE");
         if audit_log_enabled {
-            info!(
-                "AUDIT_LOG_ENABLE: write llm_audit logs for every proxied request/response"
-            );
+            info!("AUDIT_LOG_ENABLE: write llm_audit logs for every proxied request/response");
         }
         let audit_log_max_chars = audit_log_max_chars_from_env();
+        let request_body_max_bytes = env_usize("REQUEST_BODY_MAX_BYTES", 16 * 1024 * 1024);
+        let response_capture_max_bytes = env_usize("RESPONSE_CAPTURE_MAX_BYTES", 4 * 1024 * 1024);
         if audit_log_max_chars == usize::MAX {
             info!("AUDIT_LOG_MAX_CHARS: unlimited (full input/output in audit logs)");
         }
@@ -122,12 +137,13 @@ impl AppState {
 
         Self {
             llm_url,
-            http: http_builder
-                .build()
-                .expect("failed to build HTTP client"),
+            http: http_builder.build().expect("failed to build HTTP client"),
             langfuse,
             audit_log_enabled,
             audit_log_max_chars,
+            request_body_max_bytes,
+            response_capture_max_bytes,
+            background_tasks: Arc::default(),
         }
     }
     pub fn new(
@@ -143,6 +159,9 @@ impl AppState {
             langfuse,
             audit_log_enabled,
             audit_log_max_chars,
+            request_body_max_bytes: 16 * 1024 * 1024,
+            response_capture_max_bytes: 4 * 1024 * 1024,
+            background_tasks: Arc::default(),
         }
     }
     pub fn llm_url(&self) -> &str {
@@ -160,6 +179,12 @@ impl AppState {
     pub fn audit_log_max_chars(&self) -> usize {
         self.audit_log_max_chars
     }
+    pub fn request_body_max_bytes(&self) -> usize {
+        self.request_body_max_bytes
+    }
+    pub fn response_capture_max_bytes(&self) -> usize {
+        self.response_capture_max_bytes
+    }
     pub fn set_llm_url(&mut self, llm_url: String) {
         self.llm_url = llm_url;
     }
@@ -174,5 +199,36 @@ impl AppState {
     }
     pub fn set_audit_log_max_chars(&mut self, audit_log_max_chars: usize) {
         self.audit_log_max_chars = audit_log_max_chars;
+    }
+    pub fn set_request_body_max_bytes(&mut self, max: usize) {
+        self.request_body_max_bytes = max;
+    }
+    pub fn set_response_capture_max_bytes(&mut self, max: usize) {
+        self.response_capture_max_bytes = max;
+    }
+    pub fn spawn_background<F>(&self, future: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        let tasks = self.background_tasks.clone();
+        tasks.pending.fetch_add(1, Ordering::AcqRel);
+        tokio::spawn(async move {
+            future.await;
+            tasks.pending.fetch_sub(1, Ordering::AcqRel);
+            tasks.changed.notify_waiters();
+        });
+    }
+    pub async fn wait_for_background_tasks(&self, timeout: Duration) {
+        let tasks = self.background_tasks.clone();
+        let wait = async move {
+            loop {
+                let changed = tasks.changed.notified();
+                if tasks.pending.load(Ordering::Acquire) == 0 {
+                    break;
+                }
+                changed.await;
+            }
+        };
+        let _ = tokio::time::timeout(timeout, wait).await;
     }
 }

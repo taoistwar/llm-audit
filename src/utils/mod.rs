@@ -1,5 +1,7 @@
 pub mod env_utils;
-pub use env_utils::{audit_log_max_chars_from_env, env_flag_explicit_false, env_flag_true};
+pub use env_utils::{
+    audit_log_max_chars_from_env, env_flag_explicit_false, env_flag_true, env_usize,
+};
 
 pub fn ingestion_timestamp() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)

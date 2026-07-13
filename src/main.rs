@@ -1,7 +1,7 @@
 #[tokio::main]
 async fn main() {
     // Load .env file if it exists, but don't fail if it doesn't
-    match dotenvy::dotenv_override() {
+    match dotenvy::dotenv() {
         Ok(path) => {
             println!("[ENV] Loaded .env from: {}", path.display());
         }

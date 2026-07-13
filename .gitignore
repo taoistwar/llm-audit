@@ -3,6 +3,7 @@
 .env-dev
 /logs
 /bin/llm-audit
+/llm-audit.pid
 test.sh
 *.py
 .cursor/
