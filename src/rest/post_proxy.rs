@@ -286,15 +286,27 @@ pub async fn post_proxy_handler(
 #[cfg(test)]
 mod tests {
     use super::post_proxy_handler;
-    use crate::AppState;
+    use crate::{AppState, LangfuseConfig};
     use axum::{
-        Router,
+        Json, Router,
         body::Body,
         extract::State,
         http::{Request, StatusCode, header},
         routing::post,
     };
     use http_body_util::BodyExt;
+    use std::{
+        sync::{Arc, Mutex},
+        time::Duration,
+    };
+
+    async fn record_ingestion(
+        State(requests): State<Arc<Mutex<Vec<serde_json::Value>>>>,
+        Json(payload): Json<serde_json::Value>,
+    ) -> Json<serde_json::Value> {
+        requests.lock().unwrap().push(payload);
+        Json(serde_json::json!({ "successes": [], "errors": [] }))
+    }
 
     async fn test_state() -> AppState {
         let upstream = Router::new().route(
@@ -347,5 +359,95 @@ mod tests {
         let request = Request::post("/v1/test").body(Body::from("12345")).unwrap();
         let result = post_proxy_handler(State(state), request).await;
         assert_eq!(result.unwrap_err(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[tokio::test]
+    async fn reports_non_streaming_tool_call_output_to_langfuse() {
+        let upstream_output = serde_json::json!({
+            "choices": [{
+                "finish_reason": "tool_calls",
+                "message": {
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_123",
+                        "type": "function",
+                        "function": {
+                            "name": "read_file",
+                            "arguments": "{\"path\":\"Cargo.toml\"}"
+                        }
+                    }]
+                }
+            }],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15
+            }
+        });
+        let upstream_response = upstream_output.clone();
+        let upstream = Router::new().route(
+            "/v1/test",
+            post(move || {
+                let response = upstream_response.clone();
+                async move { Json(response) }
+            }),
+        );
+        let upstream_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let upstream_addr = upstream_listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(upstream_listener, upstream).await.unwrap();
+        });
+
+        let ingestions = Arc::new(Mutex::new(Vec::new()));
+        let langfuse = Router::new()
+            .route("/api/public/ingestion", post(record_ingestion))
+            .with_state(ingestions.clone());
+        let langfuse_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let langfuse_addr = langfuse_listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(langfuse_listener, langfuse).await.unwrap();
+        });
+
+        let state = AppState::new(
+            format!("http://{upstream_addr}"),
+            reqwest::Client::new(),
+            Some(LangfuseConfig::new(
+                format!("http://{langfuse_addr}"),
+                "public-key".to_string(),
+                "secret-key".to_string(),
+            )),
+            false,
+            16_384,
+        );
+        let request = Request::post("/v1/test")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(r#"{"model":"test","stream":false}"#))
+            .unwrap();
+
+        let response = post_proxy_handler(State(state.clone()), request)
+            .await
+            .unwrap();
+        let response_body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&response_body).unwrap(),
+            upstream_output
+        );
+        state
+            .wait_for_background_tasks(Duration::from_secs(1))
+            .await;
+
+        let requests = ingestions.lock().unwrap();
+        assert_eq!(requests.len(), 1);
+        let update = requests[0]["batch"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|event| event["type"] == "generation-update")
+            .unwrap();
+        assert_eq!(
+            update.pointer("/body/output/choices/0/message/tool_calls/0/function/name"),
+            Some(&serde_json::Value::String("read_file".to_string()))
+        );
+        assert_eq!(update["body"]["usage"]["completionTokens"], 5);
     }
 }

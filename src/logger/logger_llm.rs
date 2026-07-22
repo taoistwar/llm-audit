@@ -71,7 +71,10 @@ pub fn parse_llm_output(raw: &[u8]) -> serde_json::Value {
     }
 
     if let Ok(value) = serde_json::from_slice::<serde_json::Value>(raw) {
+        // Tool-call completions commonly use an empty content string; in that case the
+        // surrounding response is the output and must be kept so tool_calls are not lost.
         return content_from_json(&value)
+            .filter(|content| !content.is_empty())
             .map(|content| serde_json::Value::String(content.to_string()))
             .unwrap_or(value);
     }
@@ -108,6 +111,38 @@ mod tests {
     fn parses_openai_chat_json() {
         let raw = br#"{"choices":[{"message":{"content":"hello"}}]}"#;
         assert_eq!(parse_llm_output(raw), "hello");
+    }
+
+    #[test]
+    fn preserves_openai_tool_call_response_when_content_is_empty() {
+        let raw = br#"{
+            "choices": [{
+                "finish_reason": "tool_calls",
+                "message": {
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_123",
+                        "type": "function",
+                        "function": {
+                            "name": "read_file",
+                            "arguments": "{\"path\":\"Cargo.toml\"}"
+                        }
+                    }]
+                }
+            }],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+                "total_tokens": 15
+            }
+        }"#;
+
+        let output = parse_llm_output(raw);
+
+        assert_eq!(
+            output.pointer("/choices/0/message/tool_calls/0/function/name"),
+            Some(&serde_json::Value::String("read_file".to_string()))
+        );
     }
 
     #[test]
