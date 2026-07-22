@@ -33,10 +33,7 @@
 | `LANGFUSE_PUBLIC_KEY` | 启用 Langfuse 时需要 | — | Langfuse API 公钥（HTTP Basic 用户名）。 |
 | `LANGFUSE_SECRET_KEY` | 启用 Langfuse 时需要 | — | Langfuse API 私钥（HTTP Basic 密码）。 |
 | `LANGFUSE_BASE_URL` | 否 | `https://cloud.langfuse.com` | Langfuse 实例地址（自建示例：`http://localhost:3000`）。 |
-| `LANGFUSE_ENABLE` | 否 | （未设置则按密钥决定） | 设为 `0`、`false`、`no`、`off`（大小写不敏感）时**关闭**向 Langfuse 写入，即使已配置公钥与私钥；未设置或非上述关闭值时，仍须公钥与私钥均非空才会上报。 |
-
-仅当 **`LANGFUSE_PUBLIC_KEY` 与 `LANGFUSE_SECRET_KEY` 均非空**，且未将 `LANGFUSE_ENABLE` 设为关闭值时，才会启用 Langfuse。
-
+| `LANGFUSE_ENABLE` | 否 | （未设置则按密钥决定） | 设为 `0`、`false`、`no`、`off`（大小写不敏感）时**关闭**向 Langfuse 写入，即使已配置公钥与私钥；未设置或非上述关闭值时，仍须公钥与私钥均非空才会上报。 <br/><br/>仅当 **`LANGFUSE_PUBLIC_KEY` 与 `LANGFUSE_SECRET_KEY` 均非空**，且未将 `LANGFUSE_ENABLE` 设为关闭值时，才会启用 Langfuse。|
 | `AUDIT_LOG_ENABLE` | 否 | 关闭 | 设为 `1`、`true`、`yes`、`on`（大小写不敏感）时，对每条经本代理拦截并转发的 LLM 请求与响应写入本地审计日志文件（`target: llm_audit`）。关闭时即使 Langfuse 未配置或上报失败，也不会把请求/响应内容写入本地日志。 |
 | `AUDIT_LOG_MAX_CHARS` | 否 | `16384` | 审计日志里 `input` / `output` JSON 的最大 UTF-8 字节数。设为 `0` 表示**不截断**（完整写入）。其它正整数为自定义上限；非法值按 `16384` 处理。 |
 | `LOG_DIR` | 否 | `logs` | 滚动日志目录（不存在会自动创建）。 |

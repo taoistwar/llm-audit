@@ -33,10 +33,7 @@ Environment variables are read from the process environment. If a `.env` file is
 | `LANGFUSE_PUBLIC_KEY` | For Langfuse | — | Langfuse API public key (HTTP Basic username). |
 | `LANGFUSE_SECRET_KEY` | For Langfuse | — | Langfuse API secret key (HTTP Basic password). |
 | `LANGFUSE_BASE_URL` | No | `https://cloud.langfuse.com` | Langfuse host (e.g. self-hosted `http://localhost:3000`). |
-| `LANGFUSE_ENABLE` | No | (unset: keys decide) | If `0`, `false`, `no`, or `off` (case-insensitive), **disable** Langfuse ingestion even when public/secret keys are set. When unset or any other value, ingestion still requires **both** keys non-empty. |
-
-Langfuse is enabled only when **both** `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are non-empty and `LANGFUSE_ENABLE` is not explicitly turned off.
-
+| `LANGFUSE_ENABLE` | No | (unset: keys decide) | If `0`, `false`, `no`, or `off` (case-insensitive), **disable** Langfuse ingestion even when public/secret keys are set. When unset or any other value, ingestion still requires **both** keys non-empty. <br/><br/>Langfuse is enabled only when **both** `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are non-empty and `LANGFUSE_ENABLE` is not explicitly turned off.|
 | `AUDIT_LOG_ENABLE` | No | (off) | If enabled, write proxied request/response content to the local audit log. When disabled, content is never logged locally, including when Langfuse is unavailable. |
 | `AUDIT_LOG_MAX_CHARS` | No | `16384` | Max UTF-8 bytes for `input` / `output` JSON in audit logs. Set to `0` for **no truncation** (full body). Other positive integers set a custom limit. Invalid values fall back to `16384`. |
 | `LOG_DIR` | No | `logs` | Directory for rolling log files (created if missing). |
