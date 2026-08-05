@@ -52,13 +52,36 @@
 把 OpenAI 客户端/SDK 的基地址改成代理地址（即 `BIND_ADDR` 对应的 `http://主机:端口` 或 `https://主机:端口`，取决于是否配置了 TLS），而不是直连 OpenAI。`curl` 示例（HTTP）：
 
 ```bash
-curl http://127.0.0.1:19001/api/chat -d '{"model":"llama3","messages":[{"role":"user","content":"hi"}],"stream":false}'
+curl http://localhost:19001/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-xxx" \
+  -d '{
+    "model": "deepseek-v4-flash",
+    "messages": [
+      {"role": "system", "content": "你是一个有帮助的助手。"},
+      {"role": "user", "content": "你好，请用一句话介绍你自己。"}
+    ],
+    "temperature": 0.7,
+    "max_tokens": 500
+  }'
 ```
 
 若已启用 HTTPS，请将 URL 改为 `https://…`，自签证书场景下对 `curl` 可加上 `-k`（跳过校验）或 `--cacert` 指向你的 CA。
 
 ```bash
-curl https://127.0.0.1:19001/api/chat -k -d '{"model":"llama3","messages":[{"role":"user","content":"hi"}],"stream":false}'
+curl http://localhost:19001/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-xxx" \
+  -d '{
+    "model": "deepseek-v4-flash",
+    "stream":true,
+    "messages": [
+      {"role": "system", "content": "你是一个有帮助的助手。"},
+      {"role": "user", "content": "你好，请用一句话介绍你自己。"}
+    ],
+    "temperature": 0.7,
+    "max_tokens": 500
+  }'
 ```
 
 除 **`GET /health`** 外，代理路径仅注册 **POST**；其它方法与路径不会被转发。

@@ -52,13 +52,36 @@ See [docs/deployment.md](docs/deployment.md) for build and deployment instructio
 Configure your OpenAI client or SDK to use the proxy base URL derived from `BIND_ADDR` as `http://host:port` or `https://host:port`, depending on whether TLS env vars are set, instead of OpenAI directly. Example with `curl` (HTTP):
 
 ```bash
-curl http://127.0.0.1:19001/api/chat -d '{"model":"llama3","messages":[{"role":"user","content":"hi"}],"stream":false}'
+curl http://localhost:19001/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-xxx" \
+  -d '{
+    "model": "deepseek-v4-flash",
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "Hi, please introduce yourself in one sentence."}
+    ],
+    "temperature": 0.7,
+    "max_tokens": 500
+  }'
 ```
 
 With HTTPS enabled, use `https://…`; for self-signed certs, `curl` may need `-k` (insecure) or `--cacert` pointing at your CA.
 
 ```bash
-curl https://127.0.0.1:19001/api/chat -k -d '{"model":"llama3","messages":[{"role":"user","content":"hi"}],"stream":false}'
+curl http://localhost:19001/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-xxx" \
+  -d '{
+    "model": "deepseek-v4-flash",
+    "stream":true,
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "Hi, please introduce yourself in one sentence."}
+    ],
+    "temperature": 0.7,
+    "max_tokens": 500
+  }'
 ```
 
 Aside from **`GET /health`**, only **POST** is registered for proxied paths; other methods are not forwarded.
